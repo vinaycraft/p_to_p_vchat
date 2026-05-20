@@ -27,9 +27,9 @@ Vercel hosts the **React app**. The **WebSocket signaling server** must run else
 
    | Name | Value |
    |------|--------|
-   | `REACT_APP_WS_URL` | `wss://YOUR-RENDER-APP.onrender.com` |
+   | `REACT_APP_WS_URL` | `wss://YOUR-RENDER-APP.onrender.com` (must be **`wss://`**, not `https://` and not `ws://` when the site is on HTTPS) |
 
-   Use your real Render hostname from Step 1. No trailing slash.
+   Use your real Render hostname from Step 1. No trailing slash. **After adding or changing this variable, trigger a new Vercel deploy** so the value is baked into the build.
 
 5. Click **Deploy**.
 

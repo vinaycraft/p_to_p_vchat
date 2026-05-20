@@ -1,7 +1,39 @@
 import { useEffect, useRef, useState } from 'react';
 import './App.css';
 
-const WS_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:8080';
+/**
+ * Signaling WebSocket URL.
+ * - From HTTPS (e.g. Vercel) you must use wss:// — browsers block ws:// (mixed content).
+ * - If REACT_APP_WS_URL is ws://… we upgrade to wss:// when the page is HTTPS.
+ */
+function getSignalingWsUrl() {
+  const raw = process.env.REACT_APP_WS_URL || '';
+  const pageIsHttps =
+    typeof window !== 'undefined' && window.location.protocol === 'https:';
+
+  if (pageIsHttps && !raw.trim()) {
+    return {
+      url: null,
+      error:
+        'Missing signaling URL: set REACT_APP_WS_URL to wss://your-app.onrender.com in Vercel, then redeploy.',
+    };
+  }
+
+  let url = raw.trim() || 'ws://localhost:8080';
+
+  if (url.startsWith('https://')) {
+    url = 'wss://' + url.slice('https://'.length);
+  } else if (url.startsWith('http://')) {
+    url = 'ws://' + url.slice('http://'.length);
+  }
+
+  if (pageIsHttps && url.startsWith('ws://')) {
+    url = 'wss://' + url.slice('ws://'.length);
+  }
+
+  return { url, error: null };
+}
+
 const ICE_SERVERS = {
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
 };
@@ -132,7 +164,13 @@ function App() {
           localVideoRef.current.srcObject = stream;
         }
 
-        const ws = new WebSocket(WS_URL);
+        const { url: wsUrl, error: wsConfigError } = getSignalingWsUrl();
+        if (!wsUrl) {
+          setStatus(wsConfigError);
+          return;
+        }
+
+        const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {
@@ -183,11 +221,23 @@ function App() {
         };
 
         ws.onclose = () => {
-          if (!cancelled) setStatus('Disconnected from server');
+          if (!cancelled) {
+            setStatus(
+              window.location.protocol === 'https:'
+                ? 'Disconnected from signaling server. Check REACT_APP_WS_URL is wss://your-render-host (no https://) and redeploy after changing env.'
+                : 'Disconnected from server'
+            );
+          }
         };
 
         ws.onerror = () => {
-          setStatus('Cannot reach signaling server. Is it running on port 8080?');
+          if (!cancelled) {
+            setStatus(
+              window.location.protocol === 'https:'
+                ? 'Cannot open WebSocket. Use wss:// to your Render URL in REACT_APP_WS_URL, then redeploy.'
+                : 'Cannot reach signaling server. Run the server (npm start in server/) on port 8080.'
+            );
+          }
         };
       } catch (err) {
         setStatus(
