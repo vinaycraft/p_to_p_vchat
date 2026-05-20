@@ -4,6 +4,33 @@
   box-sizing: border-box;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .spinner {
+    animation: none;
+    border-top-color: var(--color-primary);
+  }
+}
+
 body {
   margin: 0;
   background: var(--color-bg);
@@ -323,6 +350,41 @@ body {
   background: var(--color-surface);
 }
 
+.waiting-actions {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 280px;
+}
+
+.waiting-reconnect-hint {
+  margin: 0;
+  font-size: var(--font-size-base);
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+.waiting-copy-btn {
+  width: 100%;
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.waiting-copy-btn:hover {
+  background: var(--color-primary-hover);
+}
+
+.video-stage:fullscreen {
+  background: #000;
+}
+
+.video-stage:fullscreen .video-slot.slot-local.can-swap {
+  cursor: pointer;
+}
+
 .connected-badge {
   position: absolute;
   top: max(16px, env(safe-area-inset-top));
@@ -432,6 +494,16 @@ body {
 .icon-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
 }
 
 .icon-btn.is-off {

@@ -2,12 +2,40 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import './App.css';
 import {
   IconFlip,
+  IconFullscreen,
   IconLink,
   IconMic,
   IconPhoneDown,
+  IconPip,
   IconUser,
   IconVideo,
 } from './icons';
+
+function playJoinChime() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 784;
+    gain.gain.value = 0.12;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.2);
+    osc.onended = () => ctx.close();
+  } catch {
+    /* audio optional */
+  }
+}
+
+function vibrateJoin() {
+  if (typeof navigator.vibrate === 'function') {
+    navigator.vibrate([60, 40, 60]);
+  }
+}
 
 function normalizeWsUrl(raw, pageIsHttps) {
   let url = (raw || '').trim();
@@ -137,7 +165,18 @@ function ErrorPanel({ phase, message, onAction }) {
   );
 }
 
-function IconButton({ label, onClick, disabled, active, variant, children }) {
+function IconButton({
+  label,
+  onClick,
+  disabled,
+  active,
+  variant,
+  children,
+  pressed,
+}) {
+  const ariaPressed =
+    pressed !== undefined ? pressed : active ? true : undefined;
+
   return (
     <button
       type="button"
@@ -146,6 +185,7 @@ function IconButton({ label, onClick, disabled, active, variant, children }) {
       disabled={disabled}
       aria-label={label}
       title={label}
+      aria-pressed={ariaPressed}
     >
       {children}
     </button>
@@ -155,6 +195,8 @@ function IconButton({ label, onClick, disabled, active, variant, children }) {
 function App() {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const videoStageRef = useRef(null);
+  const joinNotifiedRef = useRef(false);
   const pcRef = useRef(null);
   const wsRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -176,6 +218,13 @@ function App() {
   const [canFlipCamera, setCanFlipCamera] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [viewsSwapped, setViewsSwapped] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [pipActive, setPipActive] = useState(false);
+  const [announcement, setAnnouncement] = useState('');
+  const supportsPip =
+    typeof document !== 'undefined' &&
+    'pictureInPictureEnabled' in document &&
+    document.pictureInPictureEnabled;
 
   useEffect(() => {
     document.title = `Video Chat · ${roomId}`;
@@ -184,6 +233,28 @@ function App() {
   useEffect(() => {
     const constraints = navigator.mediaDevices?.getSupportedConstraints?.();
     setCanFlipCamera(!!constraints?.facingMode);
+  }, []);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () =>
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
+
+  const resetJoinNotification = useCallback(() => {
+    joinNotifiedRef.current = false;
+  }, []);
+
+  const notifyPeerJoined = useCallback(() => {
+    if (joinNotifiedRef.current) return;
+    joinNotifiedRef.current = true;
+    playJoinChime();
+    vibrateJoin();
+    setAnnouncement('Someone joined the call');
+    window.setTimeout(() => setAnnouncement(''), 4000);
   }, []);
 
   const clearRemoteVideo = useCallback(() => {
@@ -229,9 +300,10 @@ function App() {
     setIsMuted(false);
     setIsVideoOff(false);
     setViewsSwapped(false);
+    resetJoinNotification();
     setUiPhase('ended');
     setStatusMessage('You left the call');
-  }, [clearRemoteVideo]);
+  }, [clearRemoteVideo, resetJoinNotification]);
 
   useEffect(() => {
     if (!hasRemoteVideo) {
@@ -256,11 +328,60 @@ function App() {
     revealControls();
   }, [revealControls]);
 
+  const getMainVideoEl = useCallback(() => {
+    if (viewsSwapped) return localVideoRef.current;
+    return hasRemoteVideo ? remoteVideoRef.current : localVideoRef.current;
+  }, [viewsSwapped, hasRemoteVideo]);
+
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await (videoStageRef.current || document.documentElement).requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch {
+      /* unsupported */
+    }
+    revealControls();
+  }, [revealControls]);
+
+  const togglePip = useCallback(async () => {
+    const video = getMainVideoEl();
+    if (!video) return;
+    try {
+      if (document.pictureInPictureElement === video) {
+        await document.exitPictureInPicture();
+      } else if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+        await video.requestPictureInPicture();
+      } else {
+        await video.requestPictureInPicture();
+      }
+    } catch {
+      /* unsupported or no video yet */
+    }
+    revealControls();
+  }, [getMainVideoEl, revealControls]);
+
+  useEffect(() => {
+    const onPipChange = () => {
+      setPipActive(!!document.pictureInPictureElement);
+    };
+    document.addEventListener('enterpictureinpicture', onPipChange);
+    document.addEventListener('leavepictureinpicture', onPipChange);
+    return () => {
+      document.removeEventListener('enterpictureinpicture', onPipChange);
+      document.removeEventListener('leavepictureinpicture', onPipChange);
+    };
+  }, []);
+
   const rejoin = useCallback(() => {
     leaveIntentionalRef.current = false;
     setIsMuted(false);
     setIsVideoOff(false);
     setViewsSwapped(false);
+    resetJoinNotification();
     facingModeRef.current = 'user';
     setSessionKey((k) => k + 1);
     setUiPhase('loading');
@@ -362,6 +483,7 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     leaveIntentionalRef.current = false;
+    joinNotifiedRef.current = false;
 
     function cleanupPeerAndSocket() {
       if (wsRef.current) {
@@ -521,11 +643,13 @@ function App() {
               }
               break;
             case 'peer-joined':
+              notifyPeerJoined();
               if (isInitiatorRef.current) {
                 await startCallAsInitiator();
               }
               break;
             case 'offer':
+              notifyPeerJoined();
               await handleOffer(msg.sdp);
               break;
             case 'answer':
@@ -537,8 +661,10 @@ function App() {
             case 'peer-left':
               cleanupPeerAndSocket();
               clearRemoteVideo();
+              resetJoinNotification();
               setUiPhase('peer-left');
               setStatusMessage('They left — share your link to invite someone');
+              setAnnouncement('The other person left the call');
               break;
             case 'error':
               setUiPhase('error');
@@ -581,7 +707,7 @@ function App() {
       cancelled = true;
       cleanupAll();
     };
-  }, [sessionKey, roomId, clearRemoteVideo]);
+  }, [sessionKey, roomId, clearRemoteVideo, notifyPeerJoined, resetJoinNotification]);
 
   const showWaitingOverlay =
     uiPhase === 'waiting' ||
@@ -604,8 +730,20 @@ function App() {
   const showRoomHeader =
     uiPhase !== 'loading' && uiPhase !== 'error' && uiPhase !== 'ended';
 
+  const showMediaControls =
+    hasLocalStream &&
+    (uiPhase === 'in-call' || uiPhase === 'connecting' || hasRemoteVideo);
+
   return (
-    <div className="app" onPointerDown={handleAppPointer}>
+    <div
+      className="app"
+      role="application"
+      aria-label="Video chat"
+      onPointerDown={handleAppPointer}
+    >
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {announcement}
+      </p>
       {showLoadingOverlay && (
         <LoadingOverlay message={statusMessage} />
       )}
@@ -619,9 +757,10 @@ function App() {
       )}
 
       <div
+        ref={videoStageRef}
         className={`video-stage ${viewsSwapped ? 'is-swapped' : ''} ${
           hasRemoteVideo ? 'has-remote' : ''
-        }`}
+        } ${isFullscreen ? 'is-fullscreen' : ''}`}
       >
         <div
           className={`video-slot slot-remote ${
@@ -691,6 +830,20 @@ function App() {
             Send this room link to the person you want to call
           </p>
           <p className="waiting-room">Room · {roomId}</p>
+          {uiPhase === 'peer-left' && (
+            <div className="waiting-actions">
+              <p className="waiting-reconnect-hint">
+                Invite them back with the same room link
+              </p>
+              <button
+                type="button"
+                className="btn btn-secondary waiting-copy-btn"
+                onClick={copyRoomLink}
+              >
+                Copy link again
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -734,6 +887,7 @@ function App() {
                     label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
                     onClick={toggleMute}
                     active={isMuted}
+                    pressed={isMuted}
                   >
                     <IconMic off={isMuted} />
                   </IconButton>
@@ -741,9 +895,34 @@ function App() {
                     label={isVideoOff ? 'Turn camera on' : 'Turn camera off'}
                     onClick={toggleVideo}
                     active={isVideoOff}
+                    pressed={isVideoOff}
                   >
                     <IconVideo off={isVideoOff} />
                   </IconButton>
+                  {showMediaControls && (
+                    <IconButton
+                      label={
+                        isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'
+                      }
+                      onClick={toggleFullscreen}
+                      pressed={isFullscreen}
+                    >
+                      <IconFullscreen active={isFullscreen} />
+                    </IconButton>
+                  )}
+                  {showMediaControls && supportsPip && (
+                    <IconButton
+                      label={
+                        pipActive
+                          ? 'Exit picture in picture'
+                          : 'Picture in picture'
+                      }
+                      onClick={togglePip}
+                      pressed={pipActive}
+                    >
+                      <IconPip />
+                    </IconButton>
+                  )}
                   {canFlipCamera && (
                     <IconButton
                       label="Flip camera"

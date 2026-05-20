@@ -5,7 +5,8 @@
   --color-surface: rgba(255, 255, 255, 0.06);
   --color-text: #f4f4f5;
   --color-text-muted: rgba(255, 255, 255, 0.55);
-  --color-text-subtle: rgba(255, 255, 255, 0.4);
+  --color-text-subtle: rgba(255, 255, 255, 0.45);
+  --color-text-on-dark: #f4f4f5;
   --color-primary: #3b82f6;
   --color-primary-hover: #2563eb;
   --color-danger: #dc2626;
