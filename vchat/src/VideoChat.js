@@ -237,7 +237,7 @@ function VideoChat() {
   const hideControlsTimerRef = useRef(null);
   const flipInProgressRef = useRef(false);
 
-  const [isQueueMode, setIsQueueMode] = useState(() => checkQueueMode());
+  const [isQueueMode] = useState(() => checkQueueMode());
   const [roomId, setRoomId] = useState(() => checkQueueMode() ? null : getRoomId());
   const [sessionKey, setSessionKey] = useState(0);
   const [uiPhase, setUiPhase] = useState('loading');
