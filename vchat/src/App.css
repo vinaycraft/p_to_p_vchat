@@ -1,0 +1,51 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #0f0f0f;
+}
+
+.app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #111;
+}
+
+.video {
+  object-fit: cover;
+  background: #1a1a1a;
+}
+
+.video.remote {
+  width: 100%;
+  height: 100%;
+}
+
+.video.local {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  width: 200px;
+  height: 150px;
+  border-radius: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  z-index: 2;
+}
+
+.status {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 24px;
+  margin: 0;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  z-index: 3;
+  pointer-events: none;
+}
