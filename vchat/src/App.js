@@ -387,7 +387,7 @@ function App() {
     setUiPhase('loading');
     setStatusMessage('Getting ready…');
     clearRemoteVideo();
-  }, [clearRemoteVideo]);
+  }, [clearRemoteVideo, resetJoinNotification]);
 
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current;
