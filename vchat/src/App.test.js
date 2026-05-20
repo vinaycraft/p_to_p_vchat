@@ -1,8 +1,22 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import App from './App';
 
-test('renders learn react link', () => {
+beforeEach(() => {
+  Object.defineProperty(navigator, 'mediaDevices', {
+    value: {
+      getUserMedia: jest.fn().mockRejectedValue(
+        Object.assign(new Error('denied'), { name: 'NotAllowedError' })
+      ),
+    },
+    configurable: true,
+  });
+});
+
+test('shows friendly message when camera is denied', async () => {
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+  await waitFor(() => {
+    expect(
+      screen.getByText(/camera and microphone access is required/i)
+    ).toBeInTheDocument();
+  });
 });

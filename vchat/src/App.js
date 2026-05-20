@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import './App.css';
 
 function normalizeWsUrl(raw, pageIsHttps) {
@@ -18,7 +18,6 @@ function normalizeWsUrl(raw, pageIsHttps) {
   return url;
 }
 
-/** Env var (build time) or /signaling.json (edit file, push, redeploy). */
 async function resolveSignalingWsUrl() {
   const pageIsHttps = window.location.protocol === 'https:';
 
@@ -36,7 +35,7 @@ async function resolveSignalingWsUrl() {
       if (fromFile) return { url: fromFile, error: null };
     }
   } catch {
-    /* use fallback message below */
+    /* fallback below */
   }
 
   if (!pageIsHttps) {
@@ -46,7 +45,7 @@ async function resolveSignalingWsUrl() {
   return {
     url: null,
     error:
-      'Missing signaling URL. Fix one: (1) Vercel → Settings → Environment Variables → REACT_APP_WS_URL = wss://YOUR-APP.onrender.com → Redeploy. Or (2) edit vchat/public/signaling.json, push to GitHub, redeploy.',
+      'Server not configured. Ask the host to set up signaling, then try again.',
   };
 }
 
@@ -73,13 +72,64 @@ function App() {
   const wsRef = useRef(null);
   const localStreamRef = useRef(null);
   const isInitiatorRef = useRef(false);
-  const [status, setStatus] = useState('Starting...');
+  const cleanupSessionRef = useRef(() => {});
+  const leaveIntentionalRef = useRef(false);
+
+  const [roomId] = useState(() => getRoomId());
+  const [sessionKey, setSessionKey] = useState(0);
+  const [uiPhase, setUiPhase] = useState('loading');
+  const [statusMessage, setStatusMessage] = useState('Getting ready…');
+  const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
+  const [copyToast, setCopyToast] = useState(false);
+
+  useEffect(() => {
+    document.title = `Video Chat · ${roomId}`;
+  }, [roomId]);
+
+  const clearRemoteVideo = useCallback(() => {
+    setHasRemoteVideo(false);
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null;
+    }
+  }, []);
+
+  const hangUp = useCallback(() => {
+    leaveIntentionalRef.current = true;
+    cleanupSessionRef.current();
+    clearRemoteVideo();
+    setUiPhase('ended');
+    setStatusMessage('You left the call');
+  }, [clearRemoteVideo]);
+
+  const copyRoomLink = useCallback(async () => {
+    const link = window.location.href;
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch {
+      const input = document.createElement('textarea');
+      input.value = link;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+    }
+    setCopyToast(true);
+    window.setTimeout(() => setCopyToast(false), 2500);
+  }, []);
+
+  const rejoin = useCallback(() => {
+    leaveIntentionalRef.current = false;
+    setSessionKey((k) => k + 1);
+    setUiPhase('loading');
+    setStatusMessage('Getting ready…');
+    clearRemoteVideo();
+  }, [clearRemoteVideo]);
 
   useEffect(() => {
     let cancelled = false;
-    const roomId = getRoomId();
+    leaveIntentionalRef.current = false;
 
-    function cleanup() {
+    function cleanupPeerAndSocket() {
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
@@ -88,11 +138,24 @@ function App() {
         pcRef.current.close();
         pcRef.current = null;
       }
+    }
+
+    function cleanupAll() {
+      cleanupPeerAndSocket();
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((t) => t.stop());
         localStreamRef.current = null;
       }
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+      }
     }
+
+    cleanupSessionRef.current = () => {
+      cancelled = true;
+      cleanupAll();
+      clearRemoteVideo();
+    };
 
     function send(payload) {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -112,6 +175,7 @@ function App() {
       pc.ontrack = (event) => {
         if (remoteVideoRef.current && event.streams[0]) {
           remoteVideoRef.current.srcObject = event.streams[0];
+          setHasRemoteVideo(true);
         }
       };
 
@@ -122,13 +186,18 @@ function App() {
       };
 
       pc.onconnectionstatechange = () => {
+        if (cancelled) return;
         const state = pc.connectionState;
         if (state === 'connected') {
-          setStatus('Connected');
+          setUiPhase('in-call');
         } else if (state === 'connecting') {
-          setStatus('Connecting to peer...');
+          setUiPhase('connecting');
+          setStatusMessage('Connecting…');
         } else if (state === 'disconnected' || state === 'failed') {
-          setStatus('Peer disconnected');
+          setUiPhase('peer-left');
+          setStatusMessage('Call ended');
+          clearRemoteVideo();
+          cleanupPeerAndSocket();
         }
       };
 
@@ -136,20 +205,22 @@ function App() {
     }
 
     async function startCallAsInitiator() {
+      setUiPhase('connecting');
+      setStatusMessage('Connecting…');
       const pc = createPeerConnection();
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       send({ type: 'offer', sdp: offer });
-      setStatus('Calling peer...');
     }
 
     async function handleOffer(sdp) {
+      setUiPhase('connecting');
+      setStatusMessage('Connecting…');
       const pc = createPeerConnection();
       await pc.setRemoteDescription(new RTCSessionDescription(sdp));
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       send({ type: 'answer', sdp: answer });
-      setStatus('Answering...');
     }
 
     async function handleAnswer(sdp) {
@@ -166,6 +237,9 @@ function App() {
 
     async function start() {
       try {
+        setUiPhase('loading');
+        setStatusMessage('Allow camera and microphone…');
+
         const stream = await navigator.mediaDevices.getUserMedia({
           video: true,
           audio: true,
@@ -180,12 +254,13 @@ function App() {
           localVideoRef.current.srcObject = stream;
         }
 
-        setStatus('Connecting to signaling server...');
+        setStatusMessage('Connecting to server…');
         const { url: wsUrl, error: wsConfigError } =
           await resolveSignalingWsUrl();
         if (cancelled) return;
         if (!wsUrl) {
-          setStatus(wsConfigError);
+          setUiPhase('error');
+          setStatusMessage(wsConfigError);
           return;
         }
 
@@ -193,7 +268,9 @@ function App() {
         wsRef.current = ws;
 
         ws.onopen = () => {
-          setStatus('Waiting for peer...');
+          if (cancelled) return;
+          setUiPhase('waiting');
+          setStatusMessage('Waiting for someone to join');
           send({ type: 'join', roomId });
         };
 
@@ -204,7 +281,8 @@ function App() {
             case 'joined':
               isInitiatorRef.current = msg.role === 'initiator';
               if (msg.waiting) {
-                setStatus(`Room: ${roomId} — share this link and wait`);
+                setUiPhase('waiting');
+                setStatusMessage('Waiting for someone to join');
               }
               break;
             case 'peer-joined':
@@ -222,17 +300,18 @@ function App() {
               await handleIceCandidate(msg.candidate);
               break;
             case 'peer-left':
-              if (pcRef.current) {
-                pcRef.current.close();
-                pcRef.current = null;
-              }
-              if (remoteVideoRef.current) {
-                remoteVideoRef.current.srcObject = null;
-              }
-              setStatus('Peer left — waiting for someone to join');
+              cleanupPeerAndSocket();
+              clearRemoteVideo();
+              setUiPhase('peer-left');
+              setStatusMessage('They left — share your link to invite someone');
               break;
             case 'error':
-              setStatus(msg.message);
+              setUiPhase('error');
+              setStatusMessage(
+                msg.message === 'Room is full. Only 2 people per room.'
+                  ? 'This room is full. Create a new link.'
+                  : msg.message
+              );
               break;
             default:
               break;
@@ -240,29 +319,23 @@ function App() {
         };
 
         ws.onclose = () => {
-          if (!cancelled) {
-            setStatus(
-              window.location.protocol === 'https:'
-                ? 'Disconnected from signaling server. Check REACT_APP_WS_URL is wss://your-render-host (no https://) and redeploy after changing env.'
-                : 'Disconnected from server'
-            );
-          }
+          if (cancelled || leaveIntentionalRef.current) return;
+          setUiPhase('error');
+          setStatusMessage('Lost connection to server. Tap Try again.');
         };
 
         ws.onerror = () => {
-          if (!cancelled) {
-            setStatus(
-              window.location.protocol === 'https:'
-                ? 'Cannot open WebSocket. Use wss:// to your Render URL in REACT_APP_WS_URL, then redeploy.'
-                : 'Cannot reach signaling server. Run the server (npm start in server/) on port 8080.'
-            );
-          }
+          if (cancelled) return;
+          setUiPhase('error');
+          setStatusMessage('Could not reach server. Tap Try again.');
         };
       } catch (err) {
-        setStatus(
+        if (cancelled) return;
+        setUiPhase('error');
+        setStatusMessage(
           err.name === 'NotAllowedError'
-            ? 'Allow camera and microphone access'
-            : err.message || 'Could not start video'
+            ? 'Camera and microphone access is required'
+            : 'Could not start video'
         );
       }
     }
@@ -271,9 +344,17 @@ function App() {
 
     return () => {
       cancelled = true;
-      cleanup();
+      cleanupAll();
     };
-  }, []);
+  }, [sessionKey, roomId, clearRemoteVideo]);
+
+  const showWaitingOverlay =
+    uiPhase === 'waiting' ||
+    uiPhase === 'peer-left' ||
+    (uiPhase === 'connecting' && !hasRemoteVideo);
+
+  const showStatusBar = uiPhase !== 'in-call';
+  const showControls = uiPhase !== 'loading' && uiPhase !== 'error';
 
   return (
     <div className="app">
@@ -281,8 +362,26 @@ function App() {
         ref={remoteVideoRef}
         autoPlay
         playsInline
-        className="video remote"
+        className={`video remote ${hasRemoteVideo ? 'visible' : ''}`}
       />
+
+      {showWaitingOverlay && (
+        <div className="waiting-overlay" aria-live="polite">
+          <div className="waiting-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <p className="waiting-title">
+            {uiPhase === 'peer-left' ? 'Waiting for someone' : 'Share link to start'}
+          </p>
+          <p className="waiting-sub">
+            Send this room link to the person you want to call
+          </p>
+          <p className="waiting-room">Room · {roomId}</p>
+        </div>
+      )}
+
       <video
         ref={localVideoRef}
         autoPlay
@@ -290,7 +389,53 @@ function App() {
         playsInline
         className="video local"
       />
-      <p className="status">{status}</p>
+
+      {uiPhase === 'in-call' && (
+        <div className="connected-badge" aria-label="Connected">
+          <span className="connected-dot" />
+          Connected
+        </div>
+      )}
+
+      {showStatusBar && (
+        <p className="status-bar" role="status">
+          {statusMessage}
+        </p>
+      )}
+
+      <div className="control-bar">
+        {uiPhase === 'ended' || uiPhase === 'error' ? (
+          <button type="button" className="btn btn-primary" onClick={rejoin}>
+            {uiPhase === 'error' ? 'Try again' : 'Rejoin room'}
+          </button>
+        ) : (
+          showControls && (
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={copyRoomLink}
+              >
+                Copy link
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={hangUp}
+                disabled={uiPhase === 'loading'}
+              >
+                Leave call
+              </button>
+            </>
+          )
+        )}
+      </div>
+
+      {copyToast && (
+        <div className="toast" role="status">
+          Link copied
+        </div>
+      )}
     </div>
   );
 }
