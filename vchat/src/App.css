@@ -254,6 +254,17 @@ body {
   font-weight: var(--font-weight-semibold);
 }
 
+.error-room {
+  margin: 0 0 12px;
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+  color: var(--color-text);
+}
+
+.error-room code {
+  font-size: 0.9em;
+}
+
 .error-message {
   margin: 0 0 24px;
   font-size: var(--font-size-base);
@@ -262,6 +273,38 @@ body {
 }
 
 /* —— Room header —— */
+.back-home {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  z-index: var(--z-header);
+  padding: 8px 14px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.3s ease, background 0.15s ease;
+}
+
+.back-home:hover {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.back-home:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+
+.back-home.ui-faded {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .room-header {
   position: absolute;
   top: max(12px, env(safe-area-inset-top));
@@ -387,8 +430,8 @@ body {
 
 .connected-badge {
   position: absolute;
-  top: max(16px, env(safe-area-inset-top));
-  left: max(16px, env(safe-area-inset-left));
+  top: max(52px, calc(12px + env(safe-area-inset-top)));
+  left: max(12px, env(safe-area-inset-left));
   z-index: var(--z-header);
   display: flex;
   align-items: center;

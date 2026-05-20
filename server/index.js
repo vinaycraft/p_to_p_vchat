@@ -18,11 +18,47 @@ const wss = new WebSocket.Server({ server });
 /** @type {Map<string, Set<WebSocket>>} */
 const rooms = new Map();
 
+/** @type {Set<WebSocket>} */
+const waitingQueue = new Set();
+
 function getRoom(roomId) {
   if (!rooms.has(roomId)) {
     rooms.set(roomId, new Set());
   }
   return rooms.get(roomId);
+}
+
+function generateRoomId() {
+  return Math.random().toString(36).slice(2, 9);
+}
+
+function tryPair() {
+  if (waitingQueue.size < 2) return;
+
+  const queueArray = Array.from(waitingQueue);
+  const user1 = queueArray[0];
+  const user2 = queueArray[1];
+
+  if (user1.readyState !== WebSocket.OPEN || user2.readyState !== WebSocket.OPEN) {
+    waitingQueue.delete(user1);
+    waitingQueue.delete(user2);
+    tryPair();
+    return;
+  }
+
+  const roomId = generateRoomId();
+  const room = getRoom(roomId);
+
+  waitingQueue.delete(user1);
+  waitingQueue.delete(user2);
+
+  user1.roomId = roomId;
+  user2.roomId = roomId;
+  room.add(user1);
+  room.add(user2);
+
+  user1.send(JSON.stringify({ type: 'matched', roomId, role: 'initiator' }));
+  user2.send(JSON.stringify({ type: 'matched', roomId, role: 'receiver' }));
 }
 
 function removeFromRoom(ws) {
@@ -42,6 +78,8 @@ function removeFromRoom(ws) {
       }
     }
   }
+
+  tryPair();
 }
 
 function sendToOthers(roomId, sender, payload) {
@@ -97,6 +135,13 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    if (msg.type === 'join-queue') {
+      waitingQueue.add(ws);
+      ws.send(JSON.stringify({ type: 'queued' }));
+      tryPair();
+      return;
+    }
+
     if (!ws.roomId) return;
 
     const relayTypes = ['offer', 'answer', 'ice-candidate'];
@@ -105,7 +150,10 @@ wss.on('connection', (ws) => {
     }
   });
 
-  ws.on('close', () => removeFromRoom(ws));
+  ws.on('close', () => {
+    waitingQueue.delete(ws);
+    removeFromRoom(ws);
+  });
 });
 
 server.listen(PORT, '0.0.0.0', () => {
