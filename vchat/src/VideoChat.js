@@ -681,6 +681,7 @@ function VideoChat() {
 
         ws.onopen = () => {
           if (cancelled) return;
+          console.log('[WebSocket] Connected, isQueueMode:', isQueueMode);
           if (isQueueMode) {
             setUiPhase('waiting');
             setStatusMessage('Finding someone…');
@@ -694,13 +695,16 @@ function VideoChat() {
 
         ws.onmessage = async (event) => {
           const msg = JSON.parse(event.data);
+          console.log('[WebSocket] Received:', msg.type, msg);
 
           switch (msg.type) {
             case 'queued':
+              console.log('[WebSocket] Queued, waiting for match');
               setUiPhase('waiting');
               setStatusMessage('Finding someone…');
               break;
             case 'matched':
+              console.log('[WebSocket] Matched with room:', msg.roomId, 'as', msg.role);
               isInitiatorRef.current = msg.role === 'initiator';
               setRoomId(msg.roomId);
               const url = new URL(window.location.href);
@@ -785,7 +789,7 @@ function VideoChat() {
       cancelled = true;
       cleanupAll();
     };
-  }, [sessionKey, roomId, isQueueMode, clearRemoteVideo, notifyPeerJoined, resetJoinNotification, nextPartner]);
+  }, [sessionKey, isQueueMode, clearRemoteVideo, notifyPeerJoined, resetJoinNotification, nextPartner]);
 
   const showWaitingOverlay =
     uiPhase === 'waiting' ||

@@ -33,13 +33,19 @@ function generateRoomId() {
 }
 
 function tryPair() {
-  if (waitingQueue.size < 2) return;
+  if (waitingQueue.size < 2) {
+    console.log('[Queue] Not enough users to pair, queue size:', waitingQueue.size);
+    return;
+  }
 
   const queueArray = Array.from(waitingQueue);
   const user1 = queueArray[0];
   const user2 = queueArray[1];
 
+  console.log('[Queue] Attempting to pair, queue size:', waitingQueue.size);
+
   if (user1.readyState !== WebSocket.OPEN || user2.readyState !== WebSocket.OPEN) {
+    console.log('[Queue] Removing closed connections');
     waitingQueue.delete(user1);
     waitingQueue.delete(user2);
     tryPair();
@@ -57,6 +63,7 @@ function tryPair() {
   room.add(user1);
   room.add(user2);
 
+  console.log('[Queue] Paired users in room:', roomId);
   user1.send(JSON.stringify({ type: 'matched', roomId, role: 'initiator' }));
   user2.send(JSON.stringify({ type: 'matched', roomId, role: 'receiver' }));
 }
@@ -136,8 +143,10 @@ wss.on('connection', (ws) => {
     }
 
     if (msg.type === 'join-queue') {
+      console.log('[Queue] User joined queue, queue size before:', waitingQueue.size);
       waitingQueue.add(ws);
       ws.send(JSON.stringify({ type: 'queued' }));
+      console.log('[Queue] User added to queue, queue size after:', waitingQueue.size);
       tryPair();
       return;
     }
