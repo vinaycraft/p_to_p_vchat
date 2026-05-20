@@ -75,6 +75,68 @@ function getRoomId() {
   return room;
 }
 
+function LoadingOverlay({ message }) {
+  return (
+    <div className="loading-overlay" role="status" aria-live="polite">
+      <div className="spinner" aria-hidden="true" />
+      <p className="loading-title">Setting up your call</p>
+      <p className="loading-message">{message}</p>
+    </div>
+  );
+}
+
+function getPanelContent(phase, message) {
+  if (phase === 'ended') {
+    return {
+      title: 'You left the call',
+      message: 'Share your room link anytime to start a new call.',
+      actionLabel: 'Rejoin room',
+    };
+  }
+  if (message.includes('Camera and microphone')) {
+    return {
+      title: 'Allow camera & microphone',
+      message:
+        'Open your browser settings for this site and allow access, then try again.',
+      actionLabel: 'Try again',
+    };
+  }
+  if (message.includes('Room is full')) {
+    return {
+      title: 'Room is full',
+      message: 'Only two people can join. Open a new link to start another room.',
+      actionLabel: 'Try again',
+    };
+  }
+  if (message.includes('Server not configured')) {
+    return {
+      title: 'Cannot connect',
+      message: message,
+      actionLabel: 'Try again',
+    };
+  }
+  return {
+    title: 'Something went wrong',
+    message: message,
+    actionLabel: 'Try again',
+  };
+}
+
+function ErrorPanel({ phase, message, onAction }) {
+  const { title, message: body, actionLabel } = getPanelContent(phase, message);
+  return (
+    <div className="error-panel" role="alert">
+      <div className="error-card">
+        <h2 className="error-title">{title}</h2>
+        <p className="error-message">{body}</p>
+        <button type="button" className="btn btn-primary" onClick={onAction}>
+          {actionLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function IconButton({ label, onClick, disabled, active, variant, children }) {
   return (
     <button
@@ -113,6 +175,7 @@ function App() {
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [canFlipCamera, setCanFlipCamera] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
+  const [viewsSwapped, setViewsSwapped] = useState(false);
 
   useEffect(() => {
     document.title = `Video Chat · ${roomId}`;
@@ -165,9 +228,16 @@ function App() {
     clearRemoteVideo();
     setIsMuted(false);
     setIsVideoOff(false);
+    setViewsSwapped(false);
     setUiPhase('ended');
     setStatusMessage('You left the call');
   }, [clearRemoteVideo]);
+
+  useEffect(() => {
+    if (!hasRemoteVideo) {
+      setViewsSwapped(false);
+    }
+  }, [hasRemoteVideo]);
 
   const copyRoomLink = useCallback(async () => {
     const link = window.location.href;
@@ -190,6 +260,7 @@ function App() {
     leaveIntentionalRef.current = false;
     setIsMuted(false);
     setIsVideoOff(false);
+    setViewsSwapped(false);
     facingModeRef.current = 'user';
     setSessionKey((k) => k + 1);
     setUiPhase('loading');
@@ -278,6 +349,15 @@ function App() {
       revealControls();
     }
   }, [uiPhase, revealControls]);
+
+  const canSwapViews =
+    hasRemoteVideo && (uiPhase === 'in-call' || uiPhase === 'connecting');
+
+  const handleSwapViews = useCallback(() => {
+    if (!canSwapViews) return;
+    setViewsSwapped((s) => !s);
+    revealControls();
+  }, [canSwapViews, revealControls]);
 
   useEffect(() => {
     let cancelled = false;
@@ -508,7 +588,12 @@ function App() {
     uiPhase === 'peer-left' ||
     (uiPhase === 'connecting' && !hasRemoteVideo);
 
-  const showStatusBar = uiPhase !== 'in-call';
+  const showLoadingOverlay = uiPhase === 'loading' || uiPhase === 'connecting';
+  const showErrorPanel = uiPhase === 'error' || uiPhase === 'ended';
+  const showStatusBar =
+    !showErrorPanel &&
+    uiPhase !== 'in-call' &&
+    !showLoadingOverlay;
   const showSessionControls =
     uiPhase !== 'loading' &&
     uiPhase !== 'error' &&
@@ -516,15 +601,81 @@ function App() {
   const hideControlsBar = uiPhase === 'in-call' && !controlsVisible;
   const hasLocalStream =
     uiPhase !== 'loading' && uiPhase !== 'error' && uiPhase !== 'ended';
+  const showRoomHeader =
+    uiPhase !== 'loading' && uiPhase !== 'error' && uiPhase !== 'ended';
 
   return (
     <div className="app" onPointerDown={handleAppPointer}>
-      <video
-        ref={remoteVideoRef}
-        autoPlay
-        playsInline
-        className={`video remote ${hasRemoteVideo ? 'visible' : ''}`}
-      />
+      {showLoadingOverlay && (
+        <LoadingOverlay message={statusMessage} />
+      )}
+
+      {showErrorPanel && (
+        <ErrorPanel
+          phase={uiPhase}
+          message={statusMessage}
+          onAction={rejoin}
+        />
+      )}
+
+      <div
+        className={`video-stage ${viewsSwapped ? 'is-swapped' : ''} ${
+          hasRemoteVideo ? 'has-remote' : ''
+        }`}
+      >
+        <div
+          className={`video-slot slot-remote ${
+            viewsSwapped && hideControlsBar ? 'controls-hidden-pip' : ''
+          }`}
+        >
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            className={`video ${hasRemoteVideo ? 'visible' : ''}`}
+          />
+        </div>
+
+        <div
+          className={`video-slot slot-local ${isVideoOff ? 'camera-off' : ''} ${
+            hideControlsBar ? 'controls-hidden-pip' : ''
+          } ${canSwapViews ? 'can-swap' : ''}`}
+          onClick={handleSwapViews}
+          onKeyDown={(e) => {
+            if (canSwapViews && (e.key === 'Enter' || e.key === ' ')) {
+              e.preventDefault();
+              handleSwapViews();
+            }
+          }}
+          role={canSwapViews ? 'button' : undefined}
+          tabIndex={canSwapViews ? 0 : undefined}
+          aria-label={
+            canSwapViews
+              ? viewsSwapped
+                ? 'Tap to show guest full screen'
+                : 'Tap to show your camera full screen'
+              : undefined
+          }
+        >
+          <video
+            ref={localVideoRef}
+            autoPlay
+            muted
+            playsInline
+            className="video"
+          />
+          {isVideoOff && (
+            <div className="camera-off-overlay" aria-hidden="true">
+              <IconUser />
+            </div>
+          )}
+          {canSwapViews && (
+            <span className="swap-hint" aria-hidden="true">
+              Tap to swap
+            </span>
+          )}
+        </div>
+      </div>
 
       {showWaitingOverlay && (
         <div className="waiting-overlay" aria-live="polite">
@@ -543,24 +694,14 @@ function App() {
         </div>
       )}
 
-      <div
-        className={`local-pip ${isVideoOff ? 'camera-off' : ''} ${
-          hideControlsBar ? 'controls-hidden-pip' : ''
-        }`}
-      >
-        <video
-          ref={localVideoRef}
-          autoPlay
-          muted
-          playsInline
-          className="video local"
-        />
-        {isVideoOff && (
-          <div className="camera-off-overlay" aria-hidden="true">
-            <IconUser />
-          </div>
-        )}
-      </div>
+      {showRoomHeader && (
+        <header
+          className={`room-header ${hideControlsBar ? 'ui-faded' : ''}`}
+        >
+          <span className="room-header-label">Room</span>
+          <span className="room-header-id">{roomId}</span>
+        </header>
+      )}
 
       {uiPhase === 'in-call' && (
         <div
@@ -582,12 +723,7 @@ function App() {
         className={`control-bar ${hideControlsBar ? 'controls-hidden' : ''}`}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        {uiPhase === 'ended' || uiPhase === 'error' ? (
-          <button type="button" className="btn btn-primary" onClick={rejoin}>
-            {uiPhase === 'error' ? 'Try again' : 'Rejoin room'}
-          </button>
-        ) : (
-          showSessionControls && (
+        {showSessionControls && (
             <div className="control-row">
               <IconButton label="Copy room link" onClick={copyRoomLink}>
                 <IconLink />
@@ -628,7 +764,6 @@ function App() {
                 <IconPhoneDown />
               </IconButton>
             </div>
-          )
         )}
       </div>
 

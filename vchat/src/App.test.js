@@ -16,7 +16,7 @@ test('shows friendly message when camera is denied', async () => {
   render(<App />);
   await waitFor(() => {
     expect(
-      screen.getByText(/camera and microphone access is required/i)
+      screen.getByRole('heading', { name: /allow camera & microphone/i })
     ).toBeInTheDocument();
   });
 });
