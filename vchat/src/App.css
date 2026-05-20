@@ -15,6 +15,7 @@ body {
   overflow: hidden;
   background: #0a0a0b;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  touch-action: manipulation;
 }
 
 .video {
@@ -35,16 +36,47 @@ body {
   opacity: 1;
 }
 
-.video.local {
+.local-pip {
   position: absolute;
   right: max(16px, env(safe-area-inset-right));
-  bottom: calc(88px + env(safe-area-inset-bottom));
+  bottom: calc(96px + env(safe-area-inset-bottom));
   width: min(200px, 36vw);
   height: min(150px, 27vw);
   border-radius: 12px;
   border: 2px solid rgba(255, 255, 255, 0.15);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
   z-index: 2;
+  overflow: hidden;
+  transition: bottom 0.3s ease;
+}
+
+.local-pip.controls-hidden-pip {
+  bottom: calc(24px + env(safe-area-inset-bottom));
+}
+
+.local-pip.camera-off .video.local {
+  opacity: 0;
+}
+
+.video.local {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.camera-off-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1c1c22;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.camera-off-overlay svg {
+  width: 48px;
+  height: 48px;
 }
 
 .waiting-overlay {
@@ -115,6 +147,12 @@ body {
   color: #e4e4e7;
   font-size: 0.8rem;
   font-weight: 500;
+  transition: opacity 0.3s ease;
+}
+
+.connected-badge.ui-faded {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .connected-dot {
@@ -129,13 +167,18 @@ body {
   position: absolute;
   left: 16px;
   right: 16px;
-  bottom: calc(76px + env(safe-area-inset-bottom));
+  bottom: calc(96px + env(safe-area-inset-bottom));
   margin: 0;
   text-align: center;
   color: rgba(255, 255, 255, 0.75);
   font-size: 0.875rem;
   z-index: 3;
   pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.status-bar.ui-faded {
+  opacity: 0;
 }
 
 .control-bar {
@@ -146,10 +189,79 @@ body {
   z-index: 4;
   display: flex;
   justify-content: center;
-  gap: 12px;
-  padding: 16px max(16px, env(safe-area-inset-right))
-    calc(16px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
+  padding: 12px max(12px, env(safe-area-inset-right))
+    calc(12px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
+  transition: transform 0.35s ease, opacity 0.35s ease;
+}
+
+.control-bar.controls-hidden {
+  transform: translateY(100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.icon-btn {
+  width: 52px;
+  height: 52px;
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fafafa;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.icon-btn svg {
+  width: 22px;
+  height: 22px;
+}
+
+.icon-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.icon-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.icon-btn.is-off {
+  background: rgba(220, 38, 38, 0.85);
+}
+
+.icon-btn.is-off:hover:not(:disabled) {
+  background: rgba(185, 28, 28, 0.95);
+}
+
+.icon-btn.hang-up {
+  background: #dc2626;
+}
+
+.icon-btn.hang-up:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.icon-btn.hang-up svg {
+  width: 24px;
+  height: 24px;
 }
 
 .btn {
@@ -166,29 +278,6 @@ body {
   transform: scale(0.97);
 }
 
-.btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fafafa;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.btn-danger {
-  background: #dc2626;
-  color: #fff;
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: #b91c1c;
-}
-
 .btn-primary {
   background: #3b82f6;
   color: #fff;
@@ -197,6 +286,19 @@ body {
 
 .btn-primary:hover {
   background: #2563eb;
+}
+
+.tap-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  margin: 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+  z-index: 3;
+  pointer-events: none;
 }
 
 .toast {
@@ -226,13 +328,18 @@ body {
   }
 }
 
-@media (max-width: 480px) {
-  .control-bar {
-    flex-direction: column;
-    align-items: stretch;
+@media (max-width: 380px) {
+  .icon-btn {
+    width: 46px;
+    height: 46px;
   }
 
-  .btn {
-    width: 100%;
+  .icon-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .control-row {
+    gap: 8px;
   }
 }

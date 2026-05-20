@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import './App.css';
+import {
+  IconFlip,
+  IconLink,
+  IconMic,
+  IconPhoneDown,
+  IconUser,
+  IconVideo,
+} from './icons';
 
 function normalizeWsUrl(raw, pageIsHttps) {
   let url = (raw || '').trim();
@@ -53,6 +61,8 @@ const ICE_SERVERS = {
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
 };
 
+const CONTROLS_HIDE_MS = 3000;
+
 function getRoomId() {
   const params = new URLSearchParams(window.location.search);
   let room = params.get('room');
@@ -65,6 +75,21 @@ function getRoomId() {
   return room;
 }
 
+function IconButton({ label, onClick, disabled, active, variant, children }) {
+  return (
+    <button
+      type="button"
+      className={`icon-btn ${variant || ''} ${active ? 'is-off' : ''}`}
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+    >
+      {children}
+    </button>
+  );
+}
+
 function App() {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -74,6 +99,9 @@ function App() {
   const isInitiatorRef = useRef(false);
   const cleanupSessionRef = useRef(() => {});
   const leaveIntentionalRef = useRef(false);
+  const facingModeRef = useRef('user');
+  const hideControlsTimerRef = useRef(null);
+  const flipInProgressRef = useRef(false);
 
   const [roomId] = useState(() => getRoomId());
   const [sessionKey, setSessionKey] = useState(0);
@@ -81,10 +109,19 @@ function App() {
   const [statusMessage, setStatusMessage] = useState('Getting ready…');
   const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
   const [copyToast, setCopyToast] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
+  const [canFlipCamera, setCanFlipCamera] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(true);
 
   useEffect(() => {
     document.title = `Video Chat · ${roomId}`;
   }, [roomId]);
+
+  useEffect(() => {
+    const constraints = navigator.mediaDevices?.getSupportedConstraints?.();
+    setCanFlipCamera(!!constraints?.facingMode);
+  }, []);
 
   const clearRemoteVideo = useCallback(() => {
     setHasRemoteVideo(false);
@@ -93,10 +130,41 @@ function App() {
     }
   }, []);
 
+  const scheduleHideControls = useCallback(() => {
+    if (hideControlsTimerRef.current) {
+      clearTimeout(hideControlsTimerRef.current);
+    }
+    hideControlsTimerRef.current = window.setTimeout(() => {
+      setControlsVisible(false);
+    }, CONTROLS_HIDE_MS);
+  }, []);
+
+  const revealControls = useCallback(() => {
+    setControlsVisible(true);
+    scheduleHideControls();
+  }, [scheduleHideControls]);
+
+  useEffect(() => {
+    if (uiPhase === 'in-call') {
+      revealControls();
+      return () => {
+        if (hideControlsTimerRef.current) {
+          clearTimeout(hideControlsTimerRef.current);
+        }
+      };
+    }
+    setControlsVisible(true);
+    if (hideControlsTimerRef.current) {
+      clearTimeout(hideControlsTimerRef.current);
+    }
+  }, [uiPhase, revealControls]);
+
   const hangUp = useCallback(() => {
     leaveIntentionalRef.current = true;
     cleanupSessionRef.current();
     clearRemoteVideo();
+    setIsMuted(false);
+    setIsVideoOff(false);
     setUiPhase('ended');
     setStatusMessage('You left the call');
   }, [clearRemoteVideo]);
@@ -115,15 +183,101 @@ function App() {
     }
     setCopyToast(true);
     window.setTimeout(() => setCopyToast(false), 2500);
-  }, []);
+    revealControls();
+  }, [revealControls]);
 
   const rejoin = useCallback(() => {
     leaveIntentionalRef.current = false;
+    setIsMuted(false);
+    setIsVideoOff(false);
+    facingModeRef.current = 'user';
     setSessionKey((k) => k + 1);
     setUiPhase('loading');
     setStatusMessage('Getting ready…');
     clearRemoteVideo();
   }, [clearRemoteVideo]);
+
+  const toggleMute = useCallback(() => {
+    const stream = localStreamRef.current;
+    const track = stream?.getAudioTracks()[0];
+    if (!track) return;
+    const next = !track.enabled;
+    track.enabled = next;
+    setIsMuted(!next);
+    revealControls();
+  }, [revealControls]);
+
+  const toggleVideo = useCallback(() => {
+    const stream = localStreamRef.current;
+    const track = stream?.getVideoTracks()[0];
+    if (!track) return;
+    const next = !track.enabled;
+    track.enabled = next;
+    setIsVideoOff(!next);
+    revealControls();
+  }, [revealControls]);
+
+  const replaceVideoTrack = useCallback(async (newTrack) => {
+    const stream = localStreamRef.current;
+    if (!stream) return;
+
+    const oldTrack = stream.getVideoTracks()[0];
+    if (oldTrack) {
+      stream.removeTrack(oldTrack);
+      oldTrack.stop();
+    }
+    stream.addTrack(newTrack);
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream;
+    }
+
+    const sender = pcRef.current
+      ?.getSenders()
+      .find((s) => s.track?.kind === 'video');
+    if (sender) {
+      await sender.replaceTrack(newTrack);
+    }
+  }, []);
+
+  const flipCamera = useCallback(async () => {
+    if (flipInProgressRef.current || isVideoOff) return;
+    const stream = localStreamRef.current;
+    if (!stream?.getVideoTracks()[0]) return;
+
+    flipInProgressRef.current = true;
+    const nextFacing =
+      facingModeRef.current === 'user' ? 'environment' : 'user';
+
+    const tryGetVideo = async (constraint) => {
+      const media = await navigator.mediaDevices.getUserMedia({
+        video: constraint,
+        audio: false,
+      });
+      return media.getVideoTracks()[0];
+    };
+
+    try {
+      let newTrack;
+      try {
+        newTrack = await tryGetVideo({ facingMode: { exact: nextFacing } });
+      } catch {
+        newTrack = await tryGetVideo({ facingMode: nextFacing });
+      }
+      await replaceVideoTrack(newTrack);
+      facingModeRef.current = nextFacing;
+    } catch {
+      /* device may not support flip */
+    } finally {
+      flipInProgressRef.current = false;
+      revealControls();
+    }
+  }, [isVideoOff, replaceVideoTrack, revealControls]);
+
+  const handleAppPointer = useCallback(() => {
+    if (uiPhase === 'in-call') {
+      revealControls();
+    }
+  }, [uiPhase, revealControls]);
 
   useEffect(() => {
     let cancelled = false;
@@ -241,7 +395,7 @@ function App() {
         setStatusMessage('Allow camera and microphone…');
 
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
+          video: { facingMode: 'user' },
           audio: true,
         });
         if (cancelled) {
@@ -249,6 +403,7 @@ function App() {
           return;
         }
 
+        facingModeRef.current = 'user';
         localStreamRef.current = stream;
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream;
@@ -354,10 +509,16 @@ function App() {
     (uiPhase === 'connecting' && !hasRemoteVideo);
 
   const showStatusBar = uiPhase !== 'in-call';
-  const showControls = uiPhase !== 'loading' && uiPhase !== 'error';
+  const showSessionControls =
+    uiPhase !== 'loading' &&
+    uiPhase !== 'error' &&
+    uiPhase !== 'ended';
+  const hideControlsBar = uiPhase === 'in-call' && !controlsVisible;
+  const hasLocalStream =
+    uiPhase !== 'loading' && uiPhase !== 'error' && uiPhase !== 'ended';
 
   return (
-    <div className="app">
+    <div className="app" onPointerDown={handleAppPointer}>
       <video
         ref={remoteVideoRef}
         autoPlay
@@ -382,54 +543,100 @@ function App() {
         </div>
       )}
 
-      <video
-        ref={localVideoRef}
-        autoPlay
-        muted
-        playsInline
-        className="video local"
-      />
+      <div
+        className={`local-pip ${isVideoOff ? 'camera-off' : ''} ${
+          hideControlsBar ? 'controls-hidden-pip' : ''
+        }`}
+      >
+        <video
+          ref={localVideoRef}
+          autoPlay
+          muted
+          playsInline
+          className="video local"
+        />
+        {isVideoOff && (
+          <div className="camera-off-overlay" aria-hidden="true">
+            <IconUser />
+          </div>
+        )}
+      </div>
 
       {uiPhase === 'in-call' && (
-        <div className="connected-badge" aria-label="Connected">
+        <div
+          className={`connected-badge ${hideControlsBar ? 'ui-faded' : ''}`}
+          aria-label="Connected"
+        >
           <span className="connected-dot" />
           Connected
         </div>
       )}
 
       {showStatusBar && (
-        <p className="status-bar" role="status">
+        <p className={`status-bar ${hideControlsBar ? 'ui-faded' : ''}`} role="status">
           {statusMessage}
         </p>
       )}
 
-      <div className="control-bar">
+      <div
+        className={`control-bar ${hideControlsBar ? 'controls-hidden' : ''}`}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
         {uiPhase === 'ended' || uiPhase === 'error' ? (
           <button type="button" className="btn btn-primary" onClick={rejoin}>
             {uiPhase === 'error' ? 'Try again' : 'Rejoin room'}
           </button>
         ) : (
-          showControls && (
-            <>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={copyRoomLink}
-              >
-                Copy link
-              </button>
-              <button
-                type="button"
-                className="btn btn-danger"
+          showSessionControls && (
+            <div className="control-row">
+              <IconButton label="Copy room link" onClick={copyRoomLink}>
+                <IconLink />
+              </IconButton>
+              {hasLocalStream && (
+                <>
+                  <IconButton
+                    label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+                    onClick={toggleMute}
+                    active={isMuted}
+                  >
+                    <IconMic off={isMuted} />
+                  </IconButton>
+                  <IconButton
+                    label={isVideoOff ? 'Turn camera on' : 'Turn camera off'}
+                    onClick={toggleVideo}
+                    active={isVideoOff}
+                  >
+                    <IconVideo off={isVideoOff} />
+                  </IconButton>
+                  {canFlipCamera && (
+                    <IconButton
+                      label="Flip camera"
+                      onClick={flipCamera}
+                      disabled={isVideoOff}
+                    >
+                      <IconFlip />
+                    </IconButton>
+                  )}
+                </>
+              )}
+              <IconButton
+                label="Leave call"
                 onClick={hangUp}
+                variant="hang-up"
                 disabled={uiPhase === 'loading'}
               >
-                Leave call
-              </button>
-            </>
+                <IconPhoneDown />
+              </IconButton>
+            </div>
           )
         )}
       </div>
+
+      {uiPhase === 'in-call' && hideControlsBar && (
+        <p className="tap-hint" aria-hidden="true">
+          Tap screen to show controls
+        </p>
+      )}
 
       {copyToast && (
         <div className="toast" role="status">
