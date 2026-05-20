@@ -137,12 +137,19 @@ function LoadingOverlay({ message }) {
   );
 }
 
-function getPanelContent(phase, message) {
+function getPanelContent(phase, message, isQueueMode) {
   if (phase === 'ended') {
     return {
       title: 'You left the call',
       message: 'Share your room link anytime to start a new call.',
       actionLabel: 'Rejoin room',
+    };
+  }
+  if (phase === 'peer-left' && isQueueMode) {
+    return {
+      title: 'Partner left',
+      message: 'Click Next to find someone new.',
+      actionLabel: 'Next',
     };
   }
   if (message.includes('Camera and microphone')) {
@@ -174,8 +181,8 @@ function getPanelContent(phase, message) {
   };
 }
 
-function ErrorPanel({ phase, message, onAction, roomId }) {
-  const { title, message: body, actionLabel } = getPanelContent(phase, message);
+function ErrorPanel({ phase, message, onAction, roomId, isQueueMode }) {
+  const { title, message: body, actionLabel } = getPanelContent(phase, message, isQueueMode);
   return (
     <div className="error-panel" role="alert">
       <div className="error-card">
@@ -425,6 +432,16 @@ function VideoChat() {
     setUiPhase('loading');
     setStatusMessage('Getting ready…');
     clearRemoteVideo();
+  }, [clearRemoteVideo, resetJoinNotification]);
+
+  const nextPartner = useCallback(() => {
+    leaveIntentionalRef.current = false;
+    resetJoinNotification();
+    setRoomId(null);
+    setUiPhase('loading');
+    setStatusMessage('Finding someone…');
+    clearRemoteVideo();
+    setSessionKey((k) => k + 1);
   }, [clearRemoteVideo, resetJoinNotification]);
 
   const toggleMute = useCallback(() => {
@@ -721,14 +738,8 @@ function VideoChat() {
               cleanupPeerAndSocket();
               clearRemoteVideo();
               resetJoinNotification();
-              if (isQueueMode) {
-                setUiPhase('waiting');
-                setStatusMessage('Finding someone…');
-                send({ type: 'join-queue' });
-              } else {
-                setUiPhase('peer-left');
-                setStatusMessage('They left — share your link to invite someone');
-              }
+              setUiPhase('peer-left');
+              setStatusMessage(isQueueMode ? 'Partner left. Click Next to find someone new.' : 'They left — share your link to invite someone');
               setAnnouncement('The other person left the call');
               break;
             case 'error':
@@ -774,7 +785,7 @@ function VideoChat() {
       cancelled = true;
       cleanupAll();
     };
-  }, [sessionKey, roomId, isQueueMode, clearRemoteVideo, notifyPeerJoined, resetJoinNotification]);
+  }, [sessionKey, roomId, isQueueMode, clearRemoteVideo, notifyPeerJoined, resetJoinNotification, nextPartner]);
 
   const showWaitingOverlay =
     uiPhase === 'waiting' ||
@@ -819,8 +830,9 @@ function VideoChat() {
         <ErrorPanel
           phase={uiPhase}
           message={statusMessage}
-          onAction={rejoin}
+          onAction={isQueueMode && uiPhase === 'peer-left' ? nextPartner : rejoin}
           roomId={roomId || undefined}
+          isQueueMode={isQueueMode}
         />
       )}
 
