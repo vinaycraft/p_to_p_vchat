@@ -1,25 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import './App.css';
 
-/**
- * Signaling WebSocket URL.
- * - From HTTPS (e.g. Vercel) you must use wss:// — browsers block ws:// (mixed content).
- * - If REACT_APP_WS_URL is ws://… we upgrade to wss:// when the page is HTTPS.
- */
-function getSignalingWsUrl() {
-  const raw = process.env.REACT_APP_WS_URL || '';
-  const pageIsHttps =
-    typeof window !== 'undefined' && window.location.protocol === 'https:';
-
-  if (pageIsHttps && !raw.trim()) {
-    return {
-      url: null,
-      error:
-        'Missing signaling URL: set REACT_APP_WS_URL to wss://your-app.onrender.com in Vercel, then redeploy.',
-    };
-  }
-
-  let url = raw.trim() || 'ws://localhost:8080';
+function normalizeWsUrl(raw, pageIsHttps) {
+  let url = (raw || '').trim();
+  if (!url) return null;
 
   if (url.startsWith('https://')) {
     url = 'wss://' + url.slice('https://'.length);
@@ -31,7 +15,39 @@ function getSignalingWsUrl() {
     url = 'wss://' + url.slice('ws://'.length);
   }
 
-  return { url, error: null };
+  return url;
+}
+
+/** Env var (build time) or /signaling.json (edit file, push, redeploy). */
+async function resolveSignalingWsUrl() {
+  const pageIsHttps = window.location.protocol === 'https:';
+
+  const fromEnv = normalizeWsUrl(
+    process.env.REACT_APP_WS_URL || '',
+    pageIsHttps
+  );
+  if (fromEnv) return { url: fromEnv, error: null };
+
+  try {
+    const res = await fetch('/signaling.json', { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      const fromFile = normalizeWsUrl(data.wsUrl || '', pageIsHttps);
+      if (fromFile) return { url: fromFile, error: null };
+    }
+  } catch {
+    /* use fallback message below */
+  }
+
+  if (!pageIsHttps) {
+    return { url: 'ws://localhost:8080', error: null };
+  }
+
+  return {
+    url: null,
+    error:
+      'Missing signaling URL. Fix one: (1) Vercel → Settings → Environment Variables → REACT_APP_WS_URL = wss://YOUR-APP.onrender.com → Redeploy. Or (2) edit vchat/public/signaling.json, push to GitHub, redeploy.',
+  };
 }
 
 const ICE_SERVERS = {
@@ -164,7 +180,10 @@ function App() {
           localVideoRef.current.srcObject = stream;
         }
 
-        const { url: wsUrl, error: wsConfigError } = getSignalingWsUrl();
+        setStatus('Connecting to signaling server...');
+        const { url: wsUrl, error: wsConfigError } =
+          await resolveSignalingWsUrl();
+        if (cancelled) return;
         if (!wsUrl) {
           setStatus(wsConfigError);
           return;
