@@ -20,8 +20,9 @@ Vercel hosts the **React app**. The **WebSocket signaling server** must run else
 ## Step 2 — Deploy React app (Vercel)
 
 1. Go to [vercel.com](https://vercel.com) → **Add New Project** → import your GitHub repo.
-2. **Root Directory:** `vchat` (click Edit → set to `vchat`).
-3. Framework should auto-detect **Create React App**.
+2. **Root Directory:** leave as **`.` (repository root)** — the repo includes `vercel.json` at the root so Vercel runs `cd vchat && npm run build` and publishes `vchat/build`.  
+   - If you prefer to deploy only the app folder, set **Root Directory** to `vchat` instead and remove or ignore the root `vercel.json` (the copy inside `vchat/vercel.json` is enough for that layout).
+3. Framework preset can stay **Other** or **Create React App**; the root `buildCommand` / `outputDirectory` override the defaults when using repo root.
 4. **Environment variables** (Production, Preview, Development):
 
    | Name | Value |
@@ -58,3 +59,9 @@ Set `REACT_APP_WS_URL` when prompted, or in the Vercel dashboard after the first
 | React | `http://localhost:3000` | `https://*.vercel.app` |
 | Signaling | `ws://localhost:8080` | `wss://*.onrender.com` |
 | Env | `vchat/.env` | Vercel env vars |
+
+## Troubleshooting: Vercel shows 404
+
+- **Wrong root:** If **Root Directory** was set to `server` or left confusing the detector, Vercel may deploy with no `index.html`. Use **repository root** with the root `vercel.json`, or set **Root Directory** to `vchat` and ensure the latest build finished.
+- **Redeploy:** After changing root directory or pulling the root `vercel.json`, trigger **Redeploy** on Vercel.
+- **Build logs:** In the deployment → **Building** — confirm you see `Creating an optimized production build...` and no errors.

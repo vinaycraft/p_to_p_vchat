@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "cd vchat && npm install",
+  "buildCommand": "cd vchat && npm run build",
+  "outputDirectory": "vchat/build",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
