@@ -237,6 +237,7 @@ function VideoChat() {
   const hideControlsTimerRef = useRef(null);
   const flipInProgressRef = useRef(false);
 
+  // Queue mode is determined by URL (no ?room= parameter)
   const [isQueueMode] = useState(() => checkQueueMode());
   const [roomId, setRoomId] = useState(() => checkQueueMode() ? null : getRoomId());
   const [sessionKey, setSessionKey] = useState(0);
