@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import './App.css';
 
@@ -8,22 +8,7 @@ function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    // Check if user is already logged in
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      navigate('/chat');
-      return;
-    }
-
-    // Handle OAuth callback
-    const code = searchParams.get('code');
-    if (code) {
-      handleOAuthCallback(code);
-    }
-  }, [searchParams, navigate]);
-
-  const handleOAuthCallback = async (code) => {
+  const handleOAuthCallback = useCallback(async (code) => {
     setLoading(true);
     setError(null);
 
@@ -55,7 +40,22 @@ function Login() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [navigate]);
+
+  useEffect(() => {
+    // Check if user is already logged in
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      navigate('/chat');
+      return;
+    }
+
+    // Handle OAuth callback
+    const code = searchParams.get('code');
+    if (code) {
+      handleOAuthCallback(code);
+    }
+  }, [searchParams, navigate, handleOAuthCallback]);
 
   const handleGoogleLogin = () => {
     const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
