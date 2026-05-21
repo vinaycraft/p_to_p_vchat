@@ -6,6 +6,7 @@ import {
   IconFullscreen,
   IconLink,
   IconMic,
+  IconNext,
   IconPhoneDown,
   IconPip,
   IconUser,
@@ -250,6 +251,7 @@ function VideoChat() {
   const [sessionKey, setSessionKey] = useState(0);
   const [uiPhase, setUiPhase] = useState('loading');
   const [statusMessage, setStatusMessage] = useState('Getting ready…');
+  const [autoRequeue, setAutoRequeue] = useState(false);
   const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
   const [copyToast, setCopyToast] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -443,6 +445,12 @@ function VideoChat() {
     clearRemoteVideo();
     setSessionKey((k) => k + 1);
   }, [clearRemoteVideo, resetJoinNotification]);
+
+  const sendNext = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'next' }));
+    }
+  }, []);
 
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current;
@@ -742,9 +750,26 @@ function VideoChat() {
               cleanupPeerAndSocket();
               clearRemoteVideo();
               resetJoinNotification();
-              setUiPhase('peer-left');
-              setStatusMessage(isQueueMode ? 'Partner left. Click Next to find someone new.' : 'They left — share your link to invite someone');
+              if (isQueueMode && autoRequeue) {
+                setRoomId(null);
+                setUiPhase('loading');
+                setStatusMessage('Finding someone…');
+                setSessionKey((k) => k + 1);
+              } else {
+                setUiPhase('peer-left');
+                setStatusMessage(isQueueMode ? 'Partner left. Click Next to find someone new.' : 'They left — share your link to invite someone');
+              }
               setAnnouncement('The other person left the call');
+              break;
+            case 'peer-next':
+              console.log('[WebSocket] Peer wants next, re-queueing');
+              cleanupPeerAndSocket();
+              clearRemoteVideo();
+              resetJoinNotification();
+              setRoomId(null);
+              setUiPhase('loading');
+              setStatusMessage('Finding someone…');
+              setSessionKey((k) => k + 1);
               break;
             case 'error':
               setUiPhase('error');
@@ -975,9 +1000,11 @@ function VideoChat() {
       >
         {showSessionControls && (
             <div className="control-row">
-              <IconButton label="Copy room link" onClick={copyRoomLink}>
-                <IconLink />
-              </IconButton>
+              {!isQueueMode && (
+                <IconButton label="Copy room link" onClick={copyRoomLink}>
+                  <IconLink />
+                </IconButton>
+              )}
               {hasLocalStream && (
                 <>
                   <IconButton
@@ -1031,8 +1058,30 @@ function VideoChat() {
                   )}
                 </>
               )}
+              {isQueueMode && uiPhase === 'in-call' && (
+                <>
+                  <IconButton
+                    label={`Auto re-queue: ${autoRequeue ? 'On' : 'Off'}`}
+                    onClick={() => setAutoRequeue(!autoRequeue)}
+                    active={autoRequeue}
+                    pressed={autoRequeue}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                      <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
+                      <path d="M16 6l-4-4-4 4M12 2v13" />
+                    </svg>
+                  </IconButton>
+                  <IconButton
+                    label="Next"
+                    onClick={sendNext}
+                    disabled={uiPhase === 'loading'}
+                  >
+                    <IconNext />
+                  </IconButton>
+                </>
+              )}
               <IconButton
-                label="Leave call"
+                label={isQueueMode ? 'Stop' : 'Leave call'}
                 onClick={hangUp}
                 variant="hang-up"
                 disabled={uiPhase === 'loading'}

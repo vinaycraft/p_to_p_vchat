@@ -151,6 +151,33 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    if (msg.type === 'next') {
+      const roomId = ws.roomId;
+      if (!roomId) return;
+
+      const room = rooms.get(roomId);
+      if (!room) return;
+
+      console.log('[Next] User wants next partner in room:', roomId);
+
+      for (const peer of room) {
+        if (peer.readyState === WebSocket.OPEN) {
+          peer.send(JSON.stringify({ type: 'peer-next' }));
+        }
+      }
+
+      for (const peer of room) {
+        waitingQueue.add(peer);
+        peer.roomId = null;
+      }
+
+      room.clear();
+      rooms.delete(roomId);
+
+      tryPair();
+      return;
+    }
+
     if (!ws.roomId) return;
 
     const relayTypes = ['offer', 'answer', 'ice-candidate'];

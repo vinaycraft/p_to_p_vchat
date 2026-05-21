@@ -86,3 +86,12 @@ export function IconPip() {
     </svg>
   );
 }
+
+export function IconNext() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M5 4l10 8-10 8V4z" />
+      <path d="M19 5v14" />
+    </svg>
+  );
+}
