@@ -104,7 +104,7 @@ app.post('/auth/exchange', express.json(), async (req, res) => {
     if (!isAllowed) {
       return res.status(403).json({
         error: 'Email domain not allowed',
-        message: 'Only college email addresses are allowed. Please use your .edu email.'
+        message: 'Only college email addresses are allowed (COEP, MIT, VIT, Symbiosis, etc.). Please use your college email.'
       });
     }
 

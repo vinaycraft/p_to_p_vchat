@@ -80,7 +80,7 @@ function Login() {
             Connect with fellow students via video chat
           </p>
           <p className="login-requirement">
-            Only college email addresses allowed
+            Only college email addresses allowed (COEP, MIT, VIT, Symbiosis, etc.)
           </p>
 
           {error && (
