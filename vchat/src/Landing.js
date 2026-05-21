@@ -28,16 +28,16 @@ function Landing() {
       <main className="landing-main">
         <h1 className="landing-title">Meet someone new on video</h1>
         <p className="landing-lead">
-          One-to-one video conversations. Start a call and get matched with
-          another person — no account required.
+          One-to-one video conversations for college students. Sign in with your
+          college email to get started.
         </p>
 
-        <Link to="/chat" className="landing-cta">
+        <Link to="/login" className="landing-cta">
           Start video chat
         </Link>
 
         <p className="landing-note">
-          You will be asked to allow camera and microphone access.
+          You will be asked to sign in with your college email address.
         </p>
         <p className="landing-note landing-note-dev">
           Local dev: run <code>cd server && npm start</code> in another terminal
@@ -50,10 +50,10 @@ function Landing() {
 
         <p className="landing-private">
           Have a private room link?{' '}
-          <Link to="/chat" className="landing-link">
-            Open video chat
+          <Link to="/login" className="landing-link">
+            Sign in
           </Link>{' '}
-          and share the URL with your partner (includes <code>?room=</code> in
+          first, then share the URL with your partner (includes <code>?room=</code> in
           the address bar).
         </p>
       </main>

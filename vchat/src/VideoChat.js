@@ -11,6 +11,7 @@ import {
   IconPip,
   IconUser,
   IconVideo,
+  IconLogout,
 } from './icons';
 
 function playJoinChime() {
@@ -452,6 +453,12 @@ function VideoChat() {
     }
   }, []);
 
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_info');
+    window.location.href = '/';
+  }, []);
+
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current;
     const track = stream?.getAudioTracks()[0];
@@ -684,7 +691,11 @@ function VideoChat() {
           return;
         }
 
-        const ws = new WebSocket(wsUrl);
+        // Add JWT token to WebSocket URL
+        const token = localStorage.getItem('auth_token');
+        const wsUrlWithToken = token ? `${wsUrl}?token=${token}` : wsUrl;
+
+        const ws = new WebSocket(wsUrlWithToken);
         wsRef.current = ws;
 
         ws.onopen = () => {
@@ -1088,6 +1099,13 @@ function VideoChat() {
                 disabled={uiPhase === 'loading'}
               >
                 <IconPhoneDown />
+              </IconButton>
+              <IconButton
+                label="Logout"
+                onClick={handleLogout}
+                disabled={uiPhase === 'loading'}
+              >
+                <IconLogout />
               </IconButton>
             </div>
         )}

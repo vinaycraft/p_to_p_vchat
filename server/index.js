@@ -232,7 +232,26 @@ function sendToOthers(roomId, sender, payload) {
   }
 }
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  // Validate JWT token from query parameter
+  const token = new URL(req.url, 'http://localhost').searchParams.get('token');
+
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-jwt-secret');
+      ws.user = decoded;
+      console.log('[WebSocket] User authenticated:', decoded.email);
+    } catch (err) {
+      console.log('[WebSocket] Invalid token, closing connection');
+      ws.close(1008, 'Invalid token');
+      return;
+    }
+  } else {
+    console.log('[WebSocket] No token provided, closing connection');
+    ws.close(1008, 'Authentication required');
+    return;
+  }
+
   ws.on('message', (raw) => {
     let msg;
     try {
