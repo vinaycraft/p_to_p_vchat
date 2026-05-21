@@ -13,8 +13,8 @@ function Login() {
     setError(null);
 
     try {
-      const wsUrl = process.env.REACT_APP_WS_URL || 'http://localhost:8080';
-      const response = await fetch(`${wsUrl}/auth/exchange`, {
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8080';
+      const response = await fetch(`${apiUrl}/auth/exchange`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code })
