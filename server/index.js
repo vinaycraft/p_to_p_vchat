@@ -1,17 +1,149 @@
+require('dotenv').config();
+const express = require('express');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const jwt = require('jsonwebtoken');
+const session = require('express-session');
 const http = require('http');
 const WebSocket = require('ws');
 
 const PORT = process.env.PORT || 8080;
 
-const server = http.createServer((req, res) => {
-  if (req.url === '/health' || req.url === '/') {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('ok');
-  } else {
-    res.writeHead(404);
-    res.end();
+const app = express();
+
+// Session configuration
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'dev-secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: process.env.NODE_ENV === 'production' }
+}));
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Passport Google OAuth Strategy
+passport.use(new GoogleStrategy({
+  clientID: process.env.GOOGLE_CLIENT_ID,
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  callbackURL: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback`
+},
+(accessToken, refreshToken, profile, done) => {
+  // Email domain validation will be done in the callback route
+  return done(null, profile);
+}));
+
+passport.serializeUser((user, done) => {
+  done(null, user);
+});
+
+passport.deserializeUser((user, done) => {
+  done(null, user);
+});
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
+// OAuth routes
+app.get('/auth/google',
+  passport.authenticate('google', { scope: ['profile', 'email'] })
+);
+
+// Exchange authorization code for JWT (called by frontend)
+app.post('/auth/exchange', express.json(), async (req, res) => {
+  const { code } = req.body;
+
+  if (!code) {
+    return res.status(400).json({ error: 'Authorization code is required' });
+  }
+
+  try {
+    // Exchange code for access token and profile
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: `${process.env.FRONTEND_URL}/auth/callback`,
+        grant_type: 'authorization_code'
+      })
+    });
+
+    const tokenData = await tokenResponse.json();
+
+    if (tokenData.error) {
+      return res.status(400).json({ error: tokenData.error });
+    }
+
+    // Get user profile
+    const userResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }
+    });
+
+    const userData = await userResponse.json();
+
+    // Email domain validation
+    const email = userData.email;
+    const allowedDomains = (process.env.ALLOWED_EMAIL_DOMAINS || '.edu').split(',').map(d => d.trim().toLowerCase());
+    const emailDomain = email.split('@')[1].toLowerCase();
+
+    const isAllowed = allowedDomains.some(domain => {
+      if (domain.startsWith('.')) {
+        // Wildcard domain (e.g., .edu)
+        return emailDomain.endsWith(domain);
+      }
+      // Exact domain match
+      return emailDomain === domain;
+    });
+
+    if (!isAllowed) {
+      return res.status(403).json({
+        error: 'Email domain not allowed',
+        message: 'Only college email addresses are allowed. Please use your .edu email.'
+      });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      {
+        id: userData.id,
+        email: userData.email,
+        name: userData.name,
+        picture: userData.picture
+      },
+      process.env.JWT_SECRET || 'dev-jwt-secret',
+      { expiresIn: process.env.JWT_EXPIRATION || '24h' }
+    );
+
+    res.json({ token, user: { id: userData.id, email: userData.email, name: userData.name, picture: userData.picture } });
+  } catch (err) {
+    console.error('[Auth] Error exchanging code:', err);
+    res.status(500).json({ error: 'Failed to exchange authorization code' });
   }
 });
+
+// Get current user info (protected route)
+app.get('/auth/me', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ error: 'No token provided' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-jwt-secret');
+    res.json({ user: decoded });
+  } catch (err) {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+});
+
+// Create HTTP server
+const server = http.createServer(app);
 
 const wss = new WebSocket.Server({ server });
 
