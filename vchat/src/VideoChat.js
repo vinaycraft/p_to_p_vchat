@@ -814,7 +814,8 @@ function VideoChat() {
       cancelled = true;
       cleanupAll();
     };
-  }, [sessionKey, isQueueMode, clearRemoteVideo, notifyPeerJoined, resetJoinNotification, nextPartner]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionKey, isQueueMode, autoRequeue, clearRemoteVideo, notifyPeerJoined, resetJoinNotification, nextPartner]);
 
   const showWaitingOverlay =
     uiPhase === 'waiting' ||
