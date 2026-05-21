@@ -48,7 +48,7 @@ Add these to your Render service environment variables:
 | `SESSION_SECRET` | Generate a random string (use: `openssl rand -base64 32`) |
 | `JWT_SECRET` | Generate a random string (use: `openssl rand -base64 32`) |
 | `JWT_EXPIRATION` | `24h` |
-| `ALLOWED_EMAIL_DOMAINS` | `srttc.ac.in,coep.org.in,aissmscoet.com,mitaoe.ac.in,dypcoeakurdi.ac.in,cumminscollege.org,pict.edu,vit.edu,dpcoepune.edu.in,mitwpu.edu.in,siu.edu.in,pcu.edu.in,adypu.edu.in,bvuniversity.edu.in,fergusson.edu,iccs.ac.in,bmcc.ac.in,symbiosiscollege.edu.in` |
+| `ALLOWED_EMAIL_DOMAINS` | `srttc.ac.in,coep.org.in,aissmscoet.com,mitaoe.ac.in,dypcoeakurdi.ac.in,cumminscollege.org,pict.edu,vit.edu,dpcoepune.edu.in,mitwpu.edu.in,siu.edu.in,pcu.edu.in,adypu.edu.in,bvuniversity.edu.in,fergusson.edu,iccs.ac.in,bmcc.ac.in,symbiosiscollege.edu.in,pratibhagroup.org.in` |
 | `FRONTEND_URL` | `https://p-to-p-vchat.vercel.app` |
 
 ## Step 5: Add to Local Development
